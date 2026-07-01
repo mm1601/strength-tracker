@@ -59,6 +59,7 @@ import {
   toNumberOrNull,
 } from './lib/calculations';
 import { downloadCsv, importCsv } from './lib/csv';
+import { loadCloudData, saveCloudData } from './lib/cloudStorage';
 import {
   DEFAULT_MEMBER_NAME,
   loadExercises,
@@ -190,6 +191,8 @@ function App() {
   const [records, setRecords] = useState<WorkoutRecord[]>(() => loadRecords());
   const [exercises, setExercises] = useState<ExerciseDefinition[]>(() => loadExercises());
   const [members, setMembers] = useState<TeamMember[]>(() => loadMembers());
+  const [syncStatus, setSyncStatus] = useState<'loading' | 'synced' | 'saving' | 'error' | 'local'>('loading');
+  const [syncMessage, setSyncMessage] = useState('クラウド読込中');
   const [form, setForm] = useState<WorkoutFormState>(() => createEmptyForm());
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -211,6 +214,8 @@ function App() {
   });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const entrySectionRef = useRef<HTMLElement | null>(null);
+  const cloudReadyRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -218,16 +223,78 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    let cancelled = false;
+    const localSnapshot = { records, exercises, members };
+
+    loadCloudData()
+      .then(async (cloudData) => {
+        if (cancelled) return;
+
+        const hasCloudData =
+          cloudData.records.length > 0 || cloudData.exercises.length > 0 || cloudData.members.length > 0;
+        const nextData = hasCloudData
+          ? {
+              records: cloudData.records,
+              exercises: cloudData.exercises.length ? cloudData.exercises : localSnapshot.exercises,
+              members: cloudData.members.length ? cloudData.members : localSnapshot.members,
+            }
+          : localSnapshot;
+
+        setRecords(nextData.records);
+        setExercises(nextData.exercises);
+        setMembers(nextData.members);
+        saveRecords(nextData.records);
+        saveExercises(nextData.exercises);
+        saveMembers(nextData.members);
+
+        if (!hasCloudData) {
+          await saveCloudData(nextData);
+        }
+
+        cloudReadyRef.current = true;
+        setSyncStatus('synced');
+        setSyncMessage('クラウド保存中');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        cloudReadyRef.current = false;
+        setSyncStatus('local');
+        setSyncMessage(error instanceof Error ? error.message : 'クラウドに接続できません。端末内バックアップのみです。');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // The first cloud load should use the initial local snapshot only once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     saveRecords(records);
-  }, [records]);
-
-  useEffect(() => {
     saveExercises(exercises);
-  }, [exercises]);
-
-  useEffect(() => {
     saveMembers(members);
-  }, [members]);
+
+    if (!cloudReadyRef.current) return undefined;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+
+    setSyncStatus('saving');
+    setSyncMessage('クラウドへ保存中');
+    saveTimerRef.current = window.setTimeout(() => {
+      saveCloudData({ records, exercises, members })
+        .then(() => {
+          setSyncStatus('synced');
+          setSyncMessage(`クラウド保存済み ${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`);
+        })
+        .catch((error) => {
+          setSyncStatus('error');
+          setSyncMessage(error instanceof Error ? error.message : 'クラウド保存に失敗しました。');
+        });
+    }, 700);
+
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [records, exercises, members]);
 
   const exerciseOptions = useMemo(
     () => [...exercises].sort((a, b) => a.name.localeCompare(b.name, 'ja')),
@@ -808,6 +875,10 @@ function App() {
           <h1>チーム筋トレ管理</h1>
           <div className="current-user">
             {form.memberName ? `${form.memberName}さんを選択中` : 'メンバーを選択してください'}
+          </div>
+          <div className={`sync-pill ${syncStatus}`}>
+            <Database size={14} />
+            <span>{syncMessage}</span>
           </div>
         </div>
         <button className="icon-button" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="ダークモード切替">

@@ -96,3 +96,9 @@ export type ImportResult = {
   exercises: ExerciseDefinition[];
   members: TeamMember[];
 };
+
+export type CloudData = {
+  records: WorkoutRecord[];
+  exercises: ExerciseDefinition[];
+  members: TeamMember[];
+};

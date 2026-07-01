@@ -107,6 +107,43 @@ button {
   text-align: center;
 }
 
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 8px auto 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sync-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-pill.synced {
+  background: rgba(39, 174, 96, 0.9);
+}
+
+.sync-pill.saving,
+.sync-pill.loading {
+  background: rgba(243, 156, 18, 0.9);
+}
+
+.sync-pill.error,
+.sync-pill.local {
+  background: rgba(231, 76, 60, 0.92);
+}
+
 .app-header .icon-button {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.16);
