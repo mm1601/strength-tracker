@@ -70,6 +70,12 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
 .app-shell {
   width: min(720px, 100%);
   margin: 0 auto;

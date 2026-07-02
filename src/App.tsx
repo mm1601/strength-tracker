@@ -354,6 +354,9 @@ function App() {
     () => exerciseStats.find((stats) => stats.exercise === selectedExercise) ?? null,
     [exerciseStats, selectedExercise],
   );
+  const cloudWritable = syncStatus === 'synced' || syncStatus === 'saving';
+  const cloudRequiredMessage =
+    'クラウド保存に接続できていないため保存できません。ヘッダーの同期状態を確認してください。';
 
   const oneRmChartData = useMemo(
     () => getDailyBestOneRepMax(selectedExerciseRecords),
@@ -436,6 +439,12 @@ function App() {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const requireCloudWritable = (setErrors: (errors: string[]) => void) => {
+    if (cloudWritable) return true;
+    setErrors([cloudRequiredMessage]);
+    return false;
+  };
+
   const addMembersByName = (names: string[]) => {
     const now = new Date().toISOString();
     const cleanNames = Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)));
@@ -456,6 +465,7 @@ function App() {
   };
 
   const handleBulkAddMembers = () => {
+    if (!requireCloudWritable(setFormErrors)) return;
     const names = bulkMemberText.split(/[\n,、]+/);
     const added = addMembersByName(names);
     if (added === 0) {
@@ -641,6 +651,7 @@ function App() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (!requireCloudWritable(setFormErrors)) return;
     const errors = validateForm();
     if (errors.length) {
       setFormErrors(errors);
@@ -693,6 +704,10 @@ function App() {
 
   const handleBatchSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (!requireCloudWritable(setBatchErrors)) {
+      setBatchMessage('');
+      return;
+    }
     const errors = validateBatchRows();
     if (errors.length) {
       setBatchErrors(errors);
@@ -753,6 +768,10 @@ function App() {
   };
 
   const handleDelete = (recordId: string) => {
+    if (!cloudWritable) {
+      window.alert(cloudRequiredMessage);
+      return;
+    }
     const target = records.find((record) => record.id === recordId);
     const confirmed = window.confirm(`${target?.exercise ?? 'この記録'}を削除しますか？`);
     if (!confirmed) return;
@@ -761,6 +780,7 @@ function App() {
   };
 
   const handleAddExercise = () => {
+    if (!requireCloudWritable(setFormErrors)) return;
     const name = newExercise.name.trim();
     if (!name) {
       setFormErrors(['種目名を入力してください。']);
@@ -819,6 +839,10 @@ function App() {
   };
 
   const handleAddSamples = () => {
+    if (!requireCloudWritable(setImportErrors)) {
+      setImportMessage('');
+      return;
+    }
     const rows: Omit<WorkoutRecord, 'id' | 'estimatedOneRepMax' | 'volume' | 'createdAt' | 'updatedAt'>[] = [
       { memberName: '田中', date: dateDaysAgo(62), category: '胸', exercise: 'ベンチプレス', weight: 80, reps: 5, sets: 3, bodyWeight: null, addedWeight: null, rpe: 7, memo: 'フォーム確認' },
       { memberName: '田中', date: dateDaysAgo(45), category: '胸', exercise: 'ベンチプレス', weight: 85, reps: 5, sets: 3, bodyWeight: null, addedWeight: null, rpe: 8, memo: '' },
@@ -842,6 +866,11 @@ function App() {
   };
 
   const handleClearAll = () => {
+    if (!cloudWritable) {
+      setImportErrors([cloudRequiredMessage]);
+      setImportMessage('');
+      return;
+    }
     if (!records.length) return;
     const confirmed = window.confirm('すべての記録を削除しますか？この操作は元に戻せません。');
     if (!confirmed) return;
@@ -850,6 +879,12 @@ function App() {
   };
 
   const handleImportFile = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!cloudWritable) {
+      setImportErrors([cloudRequiredMessage]);
+      setImportMessage('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -912,7 +947,7 @@ function App() {
               <p className="hint-text">1行1人、またはカンマ・読点区切りでまとめて登録できます。</p>
             </div>
             <div className="member-manager-side">
-              <button className="primary-button" type="button" onClick={handleBulkAddMembers}>
+              <button className="primary-button" type="button" onClick={handleBulkAddMembers} disabled={!cloudWritable}>
                 <Plus size={16} />
                 まとめて登録
               </button>
@@ -960,6 +995,7 @@ function App() {
           onSelectVisible={selectVisibleBatchMembers}
           onClearMembers={() => setBatchRows([])}
           onRowChange={updateBatchRow}
+          canWrite={cloudWritable}
         />
 
         <section ref={entrySectionRef} className="section quick-entry" aria-labelledby="entry-title">
@@ -1011,7 +1047,7 @@ function App() {
                 />
                 自重種目
               </label>
-              <button className="primary-button compact" type="button" onClick={handleAddExercise}>
+              <button className="primary-button compact" type="button" onClick={handleAddExercise} disabled={!cloudWritable}>
                 <Plus size={16} />
                 追加
               </button>
@@ -1155,7 +1191,7 @@ function App() {
                 <strong>{formatKg(preview.volume)}</strong>
               </div>
               <div className="form-actions">
-                <button className="primary-button" type="submit">
+                <button className="primary-button" type="submit" disabled={!cloudWritable}>
                   <Save size={17} />
                   {editingId ? '更新' : '保存'}
                 </button>
@@ -1365,16 +1401,16 @@ function App() {
               <Download size={16} />
               CSVエクスポート
             </button>
-            <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>
+            <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={!cloudWritable}>
               <Upload size={16} />
               CSVインポート
             </button>
             <input ref={fileInputRef} className="visually-hidden" type="file" accept=".csv,text/csv" onChange={handleImportFile} />
-            <button className="secondary-button" type="button" onClick={handleAddSamples}>
+            <button className="secondary-button" type="button" onClick={handleAddSamples} disabled={!cloudWritable}>
               <Plus size={16} />
               サンプルデータ追加
             </button>
-            <button className="danger-button" type="button" onClick={handleClearAll}>
+            <button className="danger-button" type="button" onClick={handleClearAll} disabled={!cloudWritable}>
               <Trash2 size={16} />
               全データ削除
             </button>
@@ -1435,6 +1471,7 @@ type BatchEntrySectionProps = {
   onSelectVisible: () => void;
   onClearMembers: () => void;
   onRowChange: (memberName: string, field: keyof Omit<BatchMemberRow, 'memberName'>, value: string) => void;
+  canWrite: boolean;
 };
 
 function BatchEntrySection({
@@ -1452,6 +1489,7 @@ function BatchEntrySection({
   onSelectVisible,
   onClearMembers,
   onRowChange,
+  canWrite,
 }: BatchEntrySectionProps) {
   const isBodyweight = isBodyweightExercise(exercises, batchForm.exercise);
   const selectedMemberNames = new Set(batchRows.map((row) => row.memberName));
@@ -1678,7 +1716,7 @@ function BatchEntrySection({
         )}
 
         <div className="batch-actions">
-          <button className="primary-button" type="submit">
+          <button className="primary-button" type="submit" disabled={!canWrite}>
             <Save size={17} />
             {batchRows.length}人分を保存
           </button>
