@@ -10,6 +10,7 @@ export type ExerciseDefinition = {
 
 export type TeamMember = {
   name: string;
+  reading?: string;
   createdAt: string;
 };
 

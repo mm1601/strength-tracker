@@ -1,4 +1,5 @@
 import { INITIAL_EXERCISES } from '../data/defaults';
+import { sortMembersByGojun } from './memberSort';
 import type { ExerciseDefinition, TeamMember, WorkoutRecord } from '../types';
 
 const RECORDS_KEY = 'strength-log.records.v1';
@@ -66,12 +67,12 @@ export const loadMembers = (): TeamMember[] => {
   const byName = new Map<string, TeamMember>();
   saved.forEach((member) => {
     const name = member.name.trim();
-    if (name) byName.set(name, { ...member, name });
+    if (name) byName.set(name, { ...member, name, reading: member.reading?.trim() || undefined });
   });
   if (!byName.has(DEFAULT_MEMBER_NAME)) {
     byName.set(DEFAULT_MEMBER_NAME, { name: DEFAULT_MEMBER_NAME, createdAt: new Date().toISOString() });
   }
-  return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  return sortMembersByGojun(Array.from(byName.values()));
 };
 
 export const saveMembers = (members: TeamMember[]) => {

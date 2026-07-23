@@ -60,6 +60,7 @@ import {
 } from './lib/calculations';
 import { downloadCsv, importCsv } from './lib/csv';
 import { loadCloudData, saveCloudData } from './lib/cloudStorage';
+import { parseMemberEntries, sortMembersByGojun } from './lib/memberSort';
 import {
   DEFAULT_MEMBER_NAME,
   loadExercises,
@@ -305,7 +306,7 @@ function App() {
     const byName = new Map<string, TeamMember>();
     members.forEach((member) => {
       const name = member.name.trim();
-      if (name) byName.set(name, { ...member, name });
+      if (name) byName.set(name, { ...member, name, reading: member.reading?.trim() || undefined });
     });
     records.forEach((record) => {
       if (record.memberName && !byName.has(record.memberName)) {
@@ -315,14 +316,21 @@ function App() {
     if (!byName.has(DEFAULT_MEMBER_NAME)) {
       byName.set(DEFAULT_MEMBER_NAME, { name: DEFAULT_MEMBER_NAME, createdAt: new Date().toISOString() });
     }
-    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    return sortMembersByGojun(Array.from(byName.values()));
   }, [members, records]);
 
   const visibleMembers = useMemo(() => {
     const query = memberSearch.trim().toLowerCase();
+    const normalizedQuery = memberSearch.trim();
     return memberOptions
       .filter((member) => member.name !== DEFAULT_MEMBER_NAME)
-      .filter((member) => !query || member.name.toLowerCase().includes(query));
+      .filter(
+        (member) =>
+          !query ||
+          member.name.toLowerCase().includes(query) ||
+          member.reading?.toLowerCase().includes(query) ||
+          member.reading?.includes(normalizedQuery),
+      );
   }, [memberOptions, memberSearch]);
 
   const filteredRecords = useMemo(
@@ -446,29 +454,39 @@ function App() {
   };
 
   const addMembersByName = (names: string[]) => {
-    const now = new Date().toISOString();
-    const cleanNames = Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)));
-    if (!cleanNames.length) return 0;
+    return upsertMembers(names.map((name) => ({ name })));
+  };
 
+  const upsertMembers = (entries: { name: string; reading?: string }[]) => {
+    const now = new Date().toISOString();
+    const cleanEntries = entries
+      .map((entry) => ({ name: entry.name.trim(), reading: entry.reading?.trim() }))
+      .filter((entry) => entry.name);
+    if (!cleanEntries.length) return { added: 0, updated: 0 };
+
+    const byName = new Map(members.map((member) => [member.name, member]));
     let added = 0;
-    setMembers((current) => {
-      const byName = new Map(current.map((member) => [member.name, member]));
-      cleanNames.forEach((name) => {
-        if (!byName.has(name)) {
-          byName.set(name, { name, createdAt: now });
-          added += 1;
-        }
-      });
-      return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    let updated = 0;
+    cleanEntries.forEach((entry) => {
+      const existing = byName.get(entry.name);
+      if (!existing) {
+        byName.set(entry.name, { name: entry.name, reading: entry.reading || undefined, createdAt: now });
+        added += 1;
+        return;
+      }
+      if (entry.reading && existing.reading !== entry.reading) {
+        byName.set(entry.name, { ...existing, reading: entry.reading });
+        updated += 1;
+      }
     });
-    return added;
+    setMembers(sortMembersByGojun(Array.from(byName.values())));
+    return { added, updated };
   };
 
   const handleBulkAddMembers = () => {
     if (!requireCloudWritable(setFormErrors)) return;
-    const names = bulkMemberText.split(/[\n,、]+/);
-    const added = addMembersByName(names);
-    if (added === 0) {
+    const result = upsertMembers(parseMemberEntries(bulkMemberText));
+    if (result.added === 0 && result.updated === 0) {
       setFormErrors(['追加するメンバー名を入力してください。']);
       return;
     }
@@ -936,15 +954,15 @@ function App() {
           <div className="member-manager roster-manager">
             <div>
               <label>
-                メンバー一括追加
+                メンバー一括追加・ふりがな更新
                 <textarea
                   value={bulkMemberText}
                   onChange={(event) => setBulkMemberText(event.target.value)}
                   rows={4}
-                  placeholder="田中&#10;佐藤&#10;鈴木、山田"
+                  placeholder="山田太郎,やまだたろう&#10;佐藤花子,さとうはなこ&#10;鈴木一郎,すずきいちろう"
                 />
               </label>
-              <p className="hint-text">1行1人、またはカンマ・読点区切りでまとめて登録できます。</p>
+              <p className="hint-text">1行1人。漢字名は「名前,ふりがな」で登録すると50音順になります。</p>
             </div>
             <div className="member-manager-side">
               <button className="primary-button" type="button" onClick={handleBulkAddMembers} disabled={!cloudWritable}>
@@ -971,7 +989,7 @@ function App() {
                   onClick={() => handleSelectMember(member.name)}
                 >
                   <span>{member.name}</span>
-                  <small>入力へ</small>
+                  <small>{member.reading || '入力へ'}</small>
                 </button>
               ))
             ) : (

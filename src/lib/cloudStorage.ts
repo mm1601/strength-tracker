@@ -1,4 +1,5 @@
 import type { CloudData, ExerciseDefinition, TeamMember, WorkoutRecord } from '../types';
+import { sortMembersByGojun } from './memberSort';
 
 export const CLOUD_API_URL =
   'https://script.google.com/macros/s/AKfycbwcIDAOqacmyZSGscQrg7OXwZP7SU1xNTP60XAX5pKts9SvhD0hA37Jd5mwviXekIjQzA/exec';
@@ -14,7 +15,13 @@ const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[
 const normalizeCloudData = (data: Partial<CloudData> | undefined): CloudData => ({
   records: asArray<WorkoutRecord>(data?.records),
   exercises: asArray<ExerciseDefinition>(data?.exercises),
-  members: asArray<TeamMember>(data?.members),
+  members: sortMembersByGojun(
+    asArray<TeamMember>(data?.members).map((member) => ({
+      ...member,
+      name: member.name?.trim() ?? '',
+      reading: member.reading?.trim() || undefined,
+    })),
+  ).filter((member) => member.name),
 });
 
 export const loadCloudData = async (): Promise<CloudData> => {

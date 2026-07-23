@@ -20,7 +20,7 @@ const SHEETS = {
     'createdAt',
     'updatedAt',
   ],
-  members: ['name', 'createdAt'],
+  members: ['name', 'reading', 'createdAt'],
   exercises: ['name', 'category', 'isBodyweight'],
 };
 
@@ -100,13 +100,21 @@ function ensureSheets_(spreadsheet) {
       sheet = spreadsheet.insertSheet(sheetName);
     }
     const headers = SHEETS[sheetName];
-    const currentHeaders = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-    const needsHeader = headers.some((header, index) => currentHeaders[index] !== header);
-    if (needsHeader) {
-      sheet.clear();
+    if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
+      return;
     }
+
+    const lastColumn = Math.max(sheet.getLastColumn(), headers.length);
+    const currentHeaders = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].filter((header) => header !== '');
+    const missingHeaders = headers.filter((header) => !currentHeaders.includes(header));
+    if (currentHeaders.length === 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    } else if (missingHeaders.length) {
+      sheet.getRange(1, currentHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+    }
+    sheet.setFrozenRows(1);
   });
 }
 
@@ -115,13 +123,16 @@ function readSheet_(spreadsheet, sheetName) {
   const headers = SHEETS[sheetName];
   if (!sheet || sheet.getLastRow() < 2) return [];
 
-  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  const lastColumn = Math.max(sheet.getLastColumn(), headers.length);
+  const actualHeaders = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map((header) => String(header || ''));
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastColumn).getValues();
   return values
     .filter((row) => row.some((cell) => cell !== ''))
     .map((row) => {
       const item = {};
       headers.forEach((header, index) => {
-        item[header] = normalizeCell_(row[index]);
+        const actualIndex = actualHeaders.indexOf(header);
+        item[header] = actualIndex === -1 ? null : normalizeCell_(row[actualIndex]);
       });
       return item;
     });
